@@ -2,12 +2,17 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
+
+type App struct {
+	Port          string
+	mux           *mux.Router
+	JobSubmission map[string]JobItem
+}
 
 type JobItem struct {
 	ID          string `json:"id"`
@@ -16,9 +21,8 @@ type JobItem struct {
 }
 
 type Step struct {
-	Type   string `json:"type"`
-	Input  string `json:"input"`
-	Output string `json:"output"`
+	Type string                 `json:"type"`
+	Args map[string]interface{} `json:"args"`
 }
 
 type JobSubmission struct {
@@ -30,21 +34,26 @@ type JobSubmissionResponse struct {
 }
 
 func main() {
-	jobArr := []JobItem{}
-
+	JobSubmission := make(map[string]JobItem)
 	r := mux.NewRouter()
-	r.HandleFunc("/job", createJobHandler(&jobArr)).Methods("POST")
-	r.HandleFunc("/job/{id}", getJobHandler(&jobArr)).Methods("GET")
+
+	App := App{Port: ":8080", mux: r, JobSubmission: JobSubmission}
+	App.RegisterRoutes()
 
 	srv := &http.Server{
-		Addr:    ":8080",
-		Handler: r,
+		Addr:    App.Port,
+		Handler: App.mux,
 	}
 
 	srv.ListenAndServe()
 }
 
-func createJobHandler(jobArray *[]JobItem) http.HandlerFunc {
+func (a *App) RegisterRoutes() {
+	a.mux.HandleFunc("/job", a.createJobHandler()).Methods("POST")
+	a.mux.HandleFunc("/job/{id}", a.getJobHandler()).Methods("GET")
+}
+
+func (a *App) createJobHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var job JobSubmission
 		err := json.NewDecoder(r.Body).Decode(&job)
@@ -52,26 +61,26 @@ func createJobHandler(jobArray *[]JobItem) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		id := uuid.New().String()
-		newJob := JobItem{ID: id, Steps: job.Steps, CurrentStep: 0}
-		*jobArray = append(*jobArray, newJob)
-		fmt.Println("added job", newJob)
+		j := a.createJobSubmissionItem(job.Steps)
+		a.JobSubmission[j.ID] = *j
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(JobSubmissionResponse{ID: id})
+		json.NewEncoder(w).Encode(JobSubmissionResponse{ID: j.ID})
 	}
 }
 
-func getJobHandler(jobArray *[]JobItem) http.HandlerFunc {
+func (a *App) getJobHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		id := vars["id"]
-		for _, job := range *jobArray {
-			if job.ID == id {
-				json.NewEncoder(w).Encode(job)
-				return
-			}
+		if job, ok := a.JobSubmission[id]; ok {
+			json.NewEncoder(w).Encode(job)
+		} else {
+			http.Error(w, "Job not found", http.StatusNotFound)
 		}
-		fmt.Printf("jobArr: %v\n", jobArray)
-		http.Error(w, "Job not found", http.StatusNotFound)
 	}
+}
+
+func (a *App) createJobSubmissionItem(steps []Step) *JobItem {
+	id := uuid.New().String()
+	return &JobItem{ID: id, Steps: steps, CurrentStep: 0}
 }
