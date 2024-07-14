@@ -1,17 +1,29 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"github.com/tnaucoin/coord/config"
+	"github.com/tnaucoin/coord/job"
 )
 
 type App struct {
-	Port          string
 	mux           *mux.Router
+	dbPool        *pgxpool.Pool
+	riverClient   *river.Client[pgx.Tx]
 	JobSubmission map[string]JobItem
+	Port          string
 }
 
 type JobItem struct {
@@ -21,8 +33,8 @@ type JobItem struct {
 }
 
 type Step struct {
-	Type string                 `json:"type"`
 	Args map[string]interface{} `json:"args"`
+	Type string                 `json:"type"`
 }
 
 type JobSubmission struct {
@@ -34,10 +46,27 @@ type JobSubmissionResponse struct {
 }
 
 func main() {
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Fatalf("Failed to load environment variables %v", err)
+	}
+
+	ctx := context.Background()
+	dbPool, err := pgxpool.New(ctx, config.GetDatabaseConnectionURL())
+	if err != nil {
+		log.Fatalf("Failed to connect to database %v", err)
+	}
+	defer dbPool.Close()
+
+	riverClient, err := river.NewClient(riverpgxv5.New(dbPool), &river.Config{})
+	if err != nil {
+		log.Fatalf("Failed to create river client %v", err)
+	}
+
 	JobSubmission := make(map[string]JobItem)
 	r := mux.NewRouter()
-
-	App := App{Port: ":8080", mux: r, JobSubmission: JobSubmission}
+	applicationPort := fmt.Sprintf(":%d", config.GetApplicationPort())
+	App := App{Port: applicationPort, mux: r, JobSubmission: JobSubmission, riverClient: riverClient, dbPool: dbPool}
 	App.RegisterRoutes()
 
 	srv := &http.Server{
@@ -83,4 +112,37 @@ func (a *App) getJobHandler() http.HandlerFunc {
 func (a *App) createJobSubmissionItem(steps []Step) *JobItem {
 	id := uuid.New().String()
 	return &JobItem{ID: id, Steps: steps, CurrentStep: 0}
+}
+
+// queueJobTask resposible for processing a request job step, and queueing it in river for processing
+func (a *App) queueJobTask(step Step) {
+	ctx := context.Background()
+	tx, err := a.dbPool.Begin(ctx)
+	if err != nil {
+		log.Fatalf("Failed to begin transaction %v", err)
+	}
+	defer tx.Rollback(ctx)
+	jobArgs := a.matchTypeToKind(step)
+	_, err = a.riverClient.InsertTx(ctx, tx, jobArgs, nil)
+	if err != nil {
+		log.Fatalf("Failed to insert task %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		log.Fatalf("Failed to commit transaction %v", err)
+	}
+}
+
+// / matchTypeToKind converts the request job step, into a river queue job type to be processed
+func (a *App) matchTypeToKind(step Step) river.JobArgs {
+	switch step.Type {
+	case job.SortArgs{}.Kind():
+		// create a new job task from the step
+		jobArgs := job.SortArgs{
+			Strings: step.Args["strings"].([]string),
+		}
+		return jobArgs
+	default:
+		log.Fatalf("Unknown job type %s", step.Type)
+		return nil
+	}
 }
