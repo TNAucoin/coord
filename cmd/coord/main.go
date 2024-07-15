@@ -11,7 +11,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/tnaucoin/coord/config"
@@ -46,11 +45,6 @@ type JobSubmissionResponse struct {
 }
 
 func main() {
-	err := godotenv.Load(".env")
-	if err != nil {
-		log.Fatalf("Failed to load environment variables %v", err)
-	}
-
 	ctx := context.Background()
 	dbPool, err := pgxpool.New(ctx, config.GetDatabaseConnectionURL())
 	if err != nil {
@@ -90,7 +84,11 @@ func (a *App) createJobHandler() http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		j := a.createJobSubmissionItem(job.Steps)
+		j, err := a.createJobSubmissionItem(job.Steps)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		a.JobSubmission[j.ID] = *j
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(JobSubmissionResponse{ID: j.ID})
@@ -109,27 +107,36 @@ func (a *App) getJobHandler() http.HandlerFunc {
 	}
 }
 
-func (a *App) createJobSubmissionItem(steps []Step) *JobItem {
+func (a *App) createJobSubmissionItem(steps []Step) (*JobItem, error) {
 	id := uuid.New().String()
-	return &JobItem{ID: id, Steps: steps, CurrentStep: 0}
+	log.Printf("step: %v", steps[0])
+	if err := a.queueJobTask(steps[0]); err != nil {
+		log.Fatal("failed to queue task")
+		return nil, err
+	}
+	return &JobItem{ID: id, Steps: steps, CurrentStep: 0}, nil
 }
 
 // queueJobTask resposible for processing a request job step, and queueing it in river for processing
-func (a *App) queueJobTask(step Step) {
+func (a *App) queueJobTask(step Step) error {
 	ctx := context.Background()
 	tx, err := a.dbPool.Begin(ctx)
 	if err != nil {
 		log.Fatalf("Failed to begin transaction %v", err)
+		return err
 	}
 	defer tx.Rollback(ctx)
 	jobArgs := a.matchTypeToKind(step)
 	_, err = a.riverClient.InsertTx(ctx, tx, jobArgs, nil)
 	if err != nil {
 		log.Fatalf("Failed to insert task %v", err)
+		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		log.Fatalf("Failed to commit transaction %v", err)
+		return err
 	}
+	return nil
 }
 
 // / matchTypeToKind converts the request job step, into a river queue job type to be processed
@@ -137,8 +144,24 @@ func (a *App) matchTypeToKind(step Step) river.JobArgs {
 	switch step.Type {
 	case job.SortArgs{}.Kind():
 		// create a new job task from the step
+		rawStrings, ok := step.Args["strings"].([]interface{})
+		if !ok {
+			log.Fatalf("Expected []interface{} for strings, got %T", step.Args["strings"])
+			return nil
+		}
+
+		var strings []string
+		for _, rawStr := range rawStrings {
+			str, ok := rawStr.(string)
+			if !ok {
+				log.Fatalf("Expected string in slice, got %T", rawStr)
+				return nil
+			}
+			strings = append(strings, str)
+		}
+
 		jobArgs := job.SortArgs{
-			Strings: step.Args["strings"].([]string),
+			Strings: strings,
 		}
 		return jobArgs
 	default:
