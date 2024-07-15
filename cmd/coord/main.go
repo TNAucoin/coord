@@ -109,7 +109,6 @@ func (a *App) getJobHandler() http.HandlerFunc {
 
 func (a *App) createJobSubmissionItem(steps []Step) (*JobItem, error) {
 	id := uuid.New().String()
-	log.Printf("step: %v", steps[0])
 	if err := a.queueJobTask(steps[0]); err != nil {
 		log.Fatal("failed to queue task")
 		return nil, err
@@ -126,7 +125,11 @@ func (a *App) queueJobTask(step Step) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	jobArgs := a.matchTypeToKind(step)
+	jobArgs, err := a.matchTypeToKind(step)
+	if err != nil {
+		fmt.Printf("error matching kind to type: %v", err)
+		return err
+	}
 	_, err = a.riverClient.InsertTx(ctx, tx, jobArgs, nil)
 	if err != nil {
 		log.Fatalf("Failed to insert task %v", err)
@@ -140,32 +143,37 @@ func (a *App) queueJobTask(step Step) error {
 }
 
 // / matchTypeToKind converts the request job step, into a river queue job type to be processed
-func (a *App) matchTypeToKind(step Step) river.JobArgs {
+func (a *App) matchTypeToKind(step Step) (river.JobArgs, error) {
 	switch step.Type {
+
+	case job.InverseArgs{}.Kind():
+		log.Printf("got inverse job step..")
+		var inverseArgs job.InverseArgs
+		argBytes, err := json.Marshal(step.Args)
+		if err != nil {
+			log.Printf("error marshaling args")
+			return nil, fmt.Errorf("error marshalling args for inverse: %v", err)
+		}
+		if err := json.Unmarshal(argBytes, &inverseArgs); err != nil {
+			log.Printf("error unmarshalling args")
+			return nil, fmt.Errorf("error unmarshalling args for inverse: %v", err)
+		}
+		log.Printf("got inverse job: %v", inverseArgs)
+		return inverseArgs, nil
+
 	case job.SortArgs{}.Kind():
-		// create a new job task from the step
-		rawStrings, ok := step.Args["strings"].([]interface{})
-		if !ok {
-			log.Fatalf("Expected []interface{} for strings, got %T", step.Args["strings"])
-			return nil
+		var sortArgs job.SortArgs
+		argBytes, err := json.Marshal(step.Args)
+		if err != nil {
+			return nil, fmt.Errorf("error marshalling args for sort: %v", err)
 		}
+		if err := json.Unmarshal(argBytes, &sortArgs); err != nil {
+			return nil, fmt.Errorf("error unmarshalling args for sort: %v", err)
+		}
+		fmt.Printf("got sort job: %v", sortArgs)
+		return sortArgs, nil
 
-		var strings []string
-		for _, rawStr := range rawStrings {
-			str, ok := rawStr.(string)
-			if !ok {
-				log.Fatalf("Expected string in slice, got %T", rawStr)
-				return nil
-			}
-			strings = append(strings, str)
-		}
-
-		jobArgs := job.SortArgs{
-			Strings: strings,
-		}
-		return jobArgs
 	default:
-		log.Fatalf("Unknown job type %s", step.Type)
-		return nil
+		return nil, fmt.Errorf("invalid job type")
 	}
 }

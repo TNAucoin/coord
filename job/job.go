@@ -3,6 +3,7 @@ package job
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 
 	"github.com/riverqueue/river"
@@ -32,5 +33,23 @@ func (w *SortWorker) Work(ctx context.Context, job *river.Job[SortArgs]) error {
 	// return nil
 	sort.Strings(job.Args.Strings)
 	fmt.Printf("Sorted strings: %+v\n", job.Args.Strings)
+	return nil
+}
+
+type InverseArgs struct {
+	JobDir     string `json:"job_dir"`
+	InputPath  string `json:"input_path"`
+	OutputPath string `json:"output_path"`
+}
+
+func (InverseArgs) Kind() string { return "inverse" }
+
+type InverseWorker struct {
+	river.WorkerDefaults[InverseArgs]
+}
+
+func (w *InverseWorker) Work(ctx context.Context, job *river.Job[InverseArgs]) error {
+	log.Printf("got inverse job args: %v", job.Args)
+	fmt.Printf("got args: %v", job.Args)
 	return nil
 }

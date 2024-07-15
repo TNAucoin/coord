@@ -21,6 +21,7 @@ func main() {
 
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &job.SortWorker{})
+	river.AddWorker(workers, &job.InverseWorker{})
 
 	riverClient, err := river.NewClient(riverpgxv5.New(dbPool), &river.Config{
 		Queues: map[string]river.QueueConfig{
