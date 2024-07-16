@@ -125,7 +125,7 @@ func (a *App) queueJobTask(step Step) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	jobArgs, err := a.matchTypeToKind(step)
+	jobArgs, err := a.convertReqArgsToJobArgs(step)
 	if err != nil {
 		fmt.Printf("error matching kind to type: %v", err)
 		return err
@@ -143,17 +143,17 @@ func (a *App) queueJobTask(step Step) error {
 }
 
 // / matchTypeToKind converts the request job step, into a river queue job type to be processed
-func (a *App) matchTypeToKind(step Step) (river.JobArgs, error) {
+func (a *App) convertReqArgsToJobArgs(step Step) (river.JobArgs, error) {
+	argBytes, err := json.Marshal(step.Args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal step args: %v", err)
+	}
 	switch step.Type {
 
 	case job.InverseArgs{}.Kind():
 		log.Printf("got inverse job step..")
 		var inverseArgs job.InverseArgs
-		argBytes, err := json.Marshal(step.Args)
-		if err != nil {
-			log.Printf("error marshaling args")
-			return nil, fmt.Errorf("error marshalling args for inverse: %v", err)
-		}
+
 		if err := json.Unmarshal(argBytes, &inverseArgs); err != nil {
 			log.Printf("error unmarshalling args")
 			return nil, fmt.Errorf("error unmarshalling args for inverse: %v", err)
@@ -163,10 +163,7 @@ func (a *App) matchTypeToKind(step Step) (river.JobArgs, error) {
 
 	case job.SortArgs{}.Kind():
 		var sortArgs job.SortArgs
-		argBytes, err := json.Marshal(step.Args)
-		if err != nil {
-			return nil, fmt.Errorf("error marshalling args for sort: %v", err)
-		}
+
 		if err := json.Unmarshal(argBytes, &sortArgs); err != nil {
 			return nil, fmt.Errorf("error unmarshalling args for sort: %v", err)
 		}
