@@ -2,8 +2,7 @@ package domain
 
 type Job struct {
 	ID          int64     `json:"id"`
-	JobID       string    `json:"job_id"`
-	Steps       []JobStep `json:"steps"`
+	JobSteps    []JobStep `json:"steps"`
 	CurrentStep int       `json:"current_step"`
 	Status      string    `json:"status"`
 }
@@ -15,8 +14,7 @@ type JobStep struct {
 
 func NewJob(jobID string, steps []JobStep) Job {
 	return Job{
-		JobID:  jobID,
-		Steps:  steps,
-		Status: "pending",
+		JobSteps: steps,
+		Status:   "pending",
 	}
 }

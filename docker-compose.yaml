@@ -23,10 +23,10 @@ services:
 
   coord:
     build:
-      dockerfile: provision/coord/Dockerfile
+      dockerfile: provision/hex-coord/Dockerfile
       context: .
     env_file:
-      - ./cmd/coord/.env
+      - ./cmd/hex-coord/.env
     ports:
       - 3001:3001
     depends_on:

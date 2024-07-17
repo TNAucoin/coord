@@ -2,10 +2,7 @@ package http
 
 import (
 	"fmt"
-	"net/http"
-	"strconv"
-
-	"github.com/gorilla/mux"
+	"github.com/gin-gonic/gin"
 	"github.com/tnaucoin/coord/config"
 	"github.com/tnaucoin/coord/internal/ports"
 )
@@ -24,13 +21,12 @@ func NewAdapter(api ports.APIPort) *Adapter {
 }
 
 func (a Adapter) Run() {
-	r := mux.NewRouter()
-	r.HandleFunc()
+	router := gin.Default()
+	router.POST("/job", a.SubmitJob)
+	router.Run(a.port)
 
-	srv := &http.Server{
-		Addr:    a.port,
-		Handler: r,
-	}
+}
 
-	srv.ListenAndServe()
+func (a Adapter) SubmitJob(c *gin.Context) {
+	c.JSON(200, nil)
 }

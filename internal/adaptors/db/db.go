@@ -10,16 +10,16 @@ import (
 
 type Job struct {
 	gorm.Model
-	JobID       int64
 	Status      string
-	Steps       []JobStep
+	JobSteps    []JobStep `gorm:"foreignKey:JobID"`
 	CurrentStep int
 }
 
 type JobStep struct {
 	gorm.Model
 	// Args map[string]interface{}
-	Type string
+	Type  string
+	JobID uint `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 }
 
 type Adapter struct {
@@ -31,7 +31,7 @@ func NewAdaptor(dataSourceUrl string) (*Adapter, error) {
 	if openErr != nil {
 		return nil, fmt.Errorf("db connection error: %v", openErr)
 	}
-	err := db.AutoMigrate(&domain.Job{}, domain.JobStep{})
+	err := db.AutoMigrate(&Job{}, &JobStep{})
 	if err != nil {
 		return nil, fmt.Errorf("db migration error: %v", err)
 	}
@@ -42,16 +42,15 @@ func (a Adapter) GetJob(id string) (domain.Job, error) {
 	var jobEntity domain.Job
 	res := a.db.First(&jobEntity, id)
 	var jobSteps []domain.JobStep
-	for _, jobEntity := range jobEntity.Steps {
+	for _, jobEntity := range jobEntity.JobSteps {
 		jobSteps = append(jobSteps, domain.JobStep{
 			Type: jobEntity.Type,
 		})
 	}
 	job := domain.Job{
 		ID:          int64(jobEntity.ID),
-		JobID:       jobEntity.JobID,
 		Status:      jobEntity.Status,
-		Steps:       jobSteps,
+		JobSteps:    jobSteps,
 		CurrentStep: jobEntity.CurrentStep,
 	}
 	return job, res.Error
@@ -59,15 +58,14 @@ func (a Adapter) GetJob(id string) (domain.Job, error) {
 
 func (a Adapter) SaveJob(job *domain.Job) error {
 	var jobSteps []JobStep
-	for _, jobStep := range job.Steps {
+	for _, jobStep := range job.JobSteps {
 		jobSteps = append(jobSteps, JobStep{
 			Type: jobStep.Type,
 		})
 	}
 	jobModel := Job{
-		JobID:       job.ID,
 		Status:      job.Status,
-		Steps:       jobSteps,
+		JobSteps:    jobSteps,
 		CurrentStep: job.CurrentStep,
 	}
 	res := a.db.Create(&jobModel)
