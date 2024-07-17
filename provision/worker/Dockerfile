@@ -12,7 +12,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /worker cmd/worker/worker.go
 
 FROM ubuntu:22.04 as runner
 
-RUN apt-get update && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates imagemagick && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /worker /worker
 

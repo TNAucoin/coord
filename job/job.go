@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"os/exec"
 	"sort"
 
 	"github.com/riverqueue/river"
@@ -36,6 +38,7 @@ func (w *SortWorker) Work(ctx context.Context, job *river.Job[SortArgs]) error {
 	return nil
 }
 
+// Inverse Color Job
 type InverseArgs struct {
 	JobDir     string `json:"job_dir"`
 	InputPath  string `json:"input_path"`
@@ -49,7 +52,41 @@ type InverseWorker struct {
 }
 
 func (w *InverseWorker) Work(ctx context.Context, job *river.Job[InverseArgs]) error {
-	log.Printf("got inverse job args: %v", job.Args)
-	fmt.Printf("got args: %v", job.Args)
+
+	inputImage := fmt.Sprintf("%s/%s", job.Args.JobDir, job.Args.InputPath)
+	outputImagePath := fmt.Sprintf("%s/%s", job.Args.JobDir, job.Args.OutputPath)
+
+	cmd := exec.Command("convert", inputImage, "-negate", outputImagePath)
+
+	cmd.Stdout = os.Stdout
+	if err := cmd.Run(); err != nil {
+		log.Fatalf("cmd.Run() failed with %s\n", err)
+	}
+	return nil
+}
+
+// Create Job Dir
+type CreateWorkspaceArgs struct {
+	JobID         string `json:"job_id"`
+	WorkspacePath string `json:"workspace_path"`
+}
+
+func (CreateWorkspaceArgs) Kind() string { return "create_workspace" }
+
+type CreateWorkspaceWorker struct {
+	river.WorkerDefaults[CreateWorkspaceArgs]
+}
+
+func (w *CreateWorkspaceWorker) Work(ctx context.Context, job *river.Job[CreateWorkspaceArgs]) error {
+	_, err := os.Stat(job.Args.WorkspacePath)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("workspace path is not a valid dir: %v", err)
+	}
+
+	jobDir := fmt.Sprintf("%s/%s", job.Args.WorkspacePath, job.Args.JobID)
+	if err := os.Mkdir(jobDir, 0755); err != nil {
+		return fmt.Errorf("failed to create job dir: %v", err)
+	}
+
 	return nil
 }

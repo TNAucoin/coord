@@ -169,6 +169,12 @@ func (a *App) convertReqArgsToJobArgs(step Step) (river.JobArgs, error) {
 		}
 		fmt.Printf("got sort job: %v", sortArgs)
 		return sortArgs, nil
+	case job.CreateWorkspaceArgs{}.Kind():
+		var workspaceArgs job.CreateWorkspaceArgs
+		if err := json.Unmarshal(argBytes, &workspaceArgs); err != nil {
+			return nil, fmt.Errorf("error unmarshalling args for workspace: %v", err)
+		}
+		return workspaceArgs, nil
 
 	default:
 		return nil, fmt.Errorf("invalid job type")
