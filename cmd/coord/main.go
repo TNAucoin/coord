@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -109,15 +110,33 @@ func (a *App) getJobHandler() http.HandlerFunc {
 
 func (a *App) createJobSubmissionItem(steps []Step) (*JobItem, error) {
 	id := uuid.New().String()
-	if err := a.queueJobTask(steps[0]); err != nil {
-		log.Fatal("failed to queue task")
+	jobItem := &JobItem{ID: id, Steps: steps, CurrentStep: 0}
+	if err := a.setupWorkspace(jobItem); err != nil {
 		return nil, err
 	}
-	return &JobItem{ID: id, Steps: steps, CurrentStep: 0}, nil
+	// TODO: we will probably want some validation checking here prior to starting queue
+	if err := a.queueJobTask(jobItem); err != nil {
+		log.Fatal("failed to queue jobItem step")
+		return nil, err
+	}
+
+	return jobItem, nil
+}
+
+func (a *App) setupWorkspace(jobItem *JobItem) error {
+	var workspaceRootDir = "/workspace"
+	_, err := os.Stat(workspaceRootDir)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("workspace dir not found: %v", err)
+	}
+	if err := os.Mkdir(fmt.Sprintf("%s/%s", workspaceRootDir, jobItem.ID), 0755); err != nil {
+		return fmt.Errorf("failed to create job workspace folder: %v", err)
+	}
+	return nil
 }
 
 // queueJobTask resposible for processing a request job step, and queueing it in river for processing
-func (a *App) queueJobTask(step Step) error {
+func (a *App) queueJobTask(jobItem *JobItem) error {
 	ctx := context.Background()
 	tx, err := a.dbPool.Begin(ctx)
 	if err != nil {
@@ -125,7 +144,8 @@ func (a *App) queueJobTask(step Step) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	jobArgs, err := a.convertReqArgsToJobArgs(step)
+	// TODO: do this in a better way, for now we just pull the first step
+	jobArgs, err := a.convertReqArgsToJobArgs(jobItem.Steps[0])
 	if err != nil {
 		fmt.Printf("error matching kind to type: %v", err)
 		return err
@@ -169,12 +189,6 @@ func (a *App) convertReqArgsToJobArgs(step Step) (river.JobArgs, error) {
 		}
 		fmt.Printf("got sort job: %v", sortArgs)
 		return sortArgs, nil
-	case job.CreateWorkspaceArgs{}.Kind():
-		var workspaceArgs job.CreateWorkspaceArgs
-		if err := json.Unmarshal(argBytes, &workspaceArgs); err != nil {
-			return nil, fmt.Errorf("error unmarshalling args for workspace: %v", err)
-		}
-		return workspaceArgs, nil
 
 	default:
 		return nil, fmt.Errorf("invalid job type")
