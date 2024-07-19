@@ -7,7 +7,7 @@ import (
 	"syscall"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tnaucoin/coord/internal/controller"
+	"github.com/tnaucoin/coord/internal/controller/http"
 	"github.com/tnaucoin/coord/internal/core/config"
 	"github.com/tnaucoin/coord/internal/core/server"
 	"github.com/tnaucoin/coord/internal/core/service"
