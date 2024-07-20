@@ -1,7 +1,12 @@
 package repository
 
-import "database/sql"
+import (
+	"context"
+
+	"github.com/jackc/pgx/v5"
+)
 
 type Database interface {
-	GetDB() *sql.DB
+	GetDB() *pgx.Conn
+	Close(ctx context.Context) error
 }

@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS jobs (
+    id BIGSERIAL PRIMARY KEY,
+    status text NOT NULL 
+);

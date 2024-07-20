@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/signal"
@@ -15,10 +16,21 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
 	instance := gin.New()
 	instance.Use(gin.Recovery())
 
-	db, err := repository.NewDB()
+	// m, err := migrate.New(
+	// 	"file://db/migrations",
+	// 	conf.GetDatabaseConnectionURL())
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// if err := m.Up(); err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	db, err := repository.NewDB(ctx)
 	if err != nil {
 		log.Fatalf("failed to init db connection: %s", err.Error())
 	}

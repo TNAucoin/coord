@@ -9,7 +9,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /coord cmd/coord/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o /coord cmd/hex/main.go
 
 FROM ubuntu:22.04 as runner
 
